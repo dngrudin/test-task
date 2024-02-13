@@ -1,0 +1,4 @@
+Language: Cpp
+BasedOnStyle: LLVM
+Standard: Auto
+ColumnLimit: 100

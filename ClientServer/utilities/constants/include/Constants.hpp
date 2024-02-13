@@ -1,0 +1,18 @@
+#ifndef CONSTANTS_HPP
+#define CONSTANTS_HPP
+
+#define PACKAGE_NUMBER_BYTES (sizeof(size_t))
+#define TIME_BYTES (sizeof(int64_t))
+#define MAX_PACKAGE_ARRAY_SIZE 1600
+#define PACKAGE_ARRAY_ITEM_BYTES sizeof(int16_t)
+#define MAX_DATA_BYTES (MAX_PACKAGE_ARRAY_SIZE * PACKAGE_ARRAY_ITEM_BYTES)
+#define MD5_BYTES 16
+
+#define BUFFER_BYTES                                                           \
+  (PACKAGE_NUMBER_BYTES + TIME_BYTES + MAX_DATA_BYTES + MD5_BYTES)
+
+#define PACKAGE_NUMBER_OFFSET 0
+#define TIME_OFFSET PACKAGE_NUMBER_BYTES
+#define DATA_OFFSET (TIME_OFFSET + TIME_BYTES)
+
+#endif // CONSTANTS_HPP

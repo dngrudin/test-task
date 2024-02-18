@@ -6,26 +6,35 @@
 
 #include <gtest/gtest.h>
 
-#include "mocks/ElevatorMock.hpp"
 #include "ElevatorsControl.hpp"
+#include "mocks/CallerToFloorMock.hpp"
+#include "mocks/ElevatorMock.hpp"
 
-namespace utest
-{
-    class ElevatorsControlFixture : public testing::Test
-    {
-    public:
-        void SetUp() override;
+namespace test {
 
-        void TearDown() override;
+class ElevatorsControlFixture : public testing::Test {
+public:
+  void SetUp() override;
 
-    protected:
-        std::shared_ptr<mock::ElevatorMock> mElevatorMock1;
-        std::shared_ptr<mock::ElevatorMock> mElevatorMock2;
-        std::shared_ptr<mock::ElevatorMock> mElevatorMock3;
+  void TearDown() override;
 
-        elevator::ElevatorsControl elevatorsControl;
-    };
+protected:
+  inline static const auto EmptyCallDirection = std::optional<elevator::CallDirection>{};
+  inline static const auto EmptyFloorNumber = std::optional<elevator::FloorNumber>{};
 
-}
+  std::shared_ptr<mock::ElevatorMock> mElevatorMock1;
+  std::shared_ptr<mock::ElevatorMock> mElevatorMock2;
+  std::shared_ptr<mock::ElevatorMock> mElevatorMock3;
+
+  std::unique_ptr<mock::CallerToFloorMock> mCallerToFloor1;
+  std::unique_ptr<mock::CallerToFloorMock> mCallerToFloor2;
+  std::unique_ptr<mock::CallerToFloorMock> mCallerToFloor3;
+  std::unique_ptr<mock::CallerToFloorMock> mCallerToFloor4;
+  std::unique_ptr<mock::CallerToFloorMock> mCallerToFloor5;
+
+  elevator::ElevatorsControl elevatorsControl;
+};
+
+} // namespace test
 
 #endif // TEST_ELEVATOR_CONTROL_H

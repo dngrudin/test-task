@@ -18,7 +18,7 @@ struct EventData {
   using Timepoint = std::chrono::steady_clock::time_point;
 
   EventData(Timepoint time, ElevatorNumber elevatorNumber, FloorNumber floorNumber,
-            ElevatorFullness fullness, Event event)
+            ElevatorFullness fullness, Event event) noexcept
       : time{time}, elevatorNumber{elevatorNumber},
         floorNumber{floorNumber}, fullness{fullness}, event{event} {}
 
@@ -40,19 +40,19 @@ public:
    * @brief Responsible for collecting events about changing the status of elevators.
    *
    * @param elevator - elevator number
-   * @param floor - floor number
+   * @param floor    - floor number
    * @param fullness - elevator fullness
-   * @param event - event type
+   * @param event    - event type
    */
   virtual void addEvent(ElevatorNumber elevator, FloorNumber floor, ElevatorFullness fullness,
                         Event event) = 0;
 
   /**
-   * @brief Get the event list
+   * @brief Print all events.
    *
-   * @param events - list of events that have occurred
+   * @param baseTimepoint - time relative to which the time of events will be displayed
    */
-  virtual void getEvents(std::vector<EventData> &events) const = 0;
+  virtual void printEvents(const EventData::Timepoint baseTimepoint) const = 0;
 
   /**
    * @brief Clear all events

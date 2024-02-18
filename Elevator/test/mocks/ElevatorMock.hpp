@@ -6,17 +6,14 @@
 
 #include "IElevator.hpp"
 
-namespace mock
-{
-    class ElevatorMock : public elevator::IElevator
-    {
-    public:
-        MOCK_METHOD(elevator::FloorNumber, getCurrentFloor, (), (const, override));
-        MOCK_METHOD(elevator::ElevatorStatus, getCurrentStatus, (), (const, override));
-        MOCK_METHOD(bool, isFull, (), (const, override));
-        MOCK_METHOD(bool, call, (elevator::FloorNumber, elevator::FloorNumber), (override));
-    };
+namespace mock {
 
-}
+class ElevatorMock final : public elevator::IElevator {
+public:
+  MOCK_METHOD(void, enable, (elevator::IElevatorsControl &), (override));
+  MOCK_METHOD(void, disable, (), (override));
+};
+
+} // namespace mock
 
 #endif // ELEVATOR_MOCK_H

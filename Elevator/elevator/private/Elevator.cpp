@@ -1,154 +1,108 @@
 
-#include "IEventLogger.hpp"
-
 #include "Elevator.hpp"
+
+#include <queue>
+
+#include "IElevatorsControl.hpp"
+#include "IEventLogger.hpp"
 
 namespace elevator {
 
 Elevator::Elevator(ElevatorNumber number, ElevatorParameter parametr,
                    std::shared_ptr<IEventLogger> logger)
-    : mElevatorNumber(number), mParameter(std::move(parametr)), mLogger(std::move(logger)),
-      mCurrentFloor(1), mStatus(ElevatorStatus::Wait),
-      mCallsHandlerThread(&Elevator::callsHandler, this), isRun(true) {}
+    : mLogger(std::move(logger)), mElevatorNumber(number), mParameter(parametr), mCurrentFloor(1),
+      isRun(false) {}
 
-Elevator::~Elevator() {
-  isRun.store(false, std::memory_order_release);
-  mCallQueueCV.notify_all();
-  mCallsHandlerThread.join();
-}
+Elevator::~Elevator() { disable(); }
 
-FloorNumber Elevator::getCurrentFloor() const {
-  return mCurrentFloor.load(std::memory_order_acquire);
-}
-
-ElevatorStatus Elevator::getCurrentStatus() const {
-  return mStatus.load(std::memory_order_acquire);
-}
-
-bool Elevator::isFull() const {
-  const auto filled = mFilled.load(std::memory_order_acquire);
-  return filled >= mParameter.capacity;
-}
-
-bool Elevator::call(FloorNumber from, FloorNumber to) {
-  bool isCallAvalible = true;
-  {
-    std::unique_lock lock(mCallQueueMtx);
-    if (mCallQueue.empty()) {
-      /// state update if the elevator has not moved before
-      mDirection = to > from ? ElevatorDirection::Up : ElevatorDirection::Down;
-      mStatus.store(ElevatorStatus::MoveWithoutStop, std::memory_order_relaxed);
-    } else if ((mStatus == ElevatorStatus::MoveWithoutStop) ||
-               ((mDirection == ElevatorDirection::Up) && (mCurrentFloor > from)) ||
-               ((mDirection == ElevatorDirection::Down) && (mCurrentFloor < from))) {
-      isCallAvalible = false;
-    }
-
-    /// if the elevator has the ability to stop at the specified floors, then the call is added to
-    /// the queue
-    if (isCallAvalible) {
-      mCallQueue.emplace(from, Target::From);
-      mCallQueue.emplace(to, Target::To);
-    }
+void Elevator::enable(IElevatorsControl &elevatorsControl) {
+  bool expected = false;
+  if (isRun.compare_exchange_strong(expected, true, std::memory_order_release,
+                                    std::memory_order_relaxed)) {
+    mMoveHandlerThread = std::thread([this, &elevatorsControl] { moveHandler(elevatorsControl); });
   }
-  mCallQueueCV.notify_all();
-
-  return isCallAvalible;
 }
 
-void Elevator::callsHandler() {
+void Elevator::disable() {
+  bool expected = true;
+  if (isRun.compare_exchange_strong(expected, false, std::memory_order_release,
+                                    std::memory_order_relaxed)) {
+    mMoveHandlerThread.join();
+  }
+}
+
+void Elevator::moveHandler(IElevatorsControl &elevatorsControl) {
+  using namespace std::chrono_literals;
+
+  auto startedCallWaiting = std::chrono::steady_clock::now();
   while (isRun.load(std::memory_order_acquire)) {
-    FloorNumber targetFloor{};
-    FloorNumber currentFloor{};
-
-    {
-      std::unique_lock lock(mCallQueueMtx);
-
-      if (mCallQueue.empty()) {
-        /// waiting for a new call
-        mStatus.store(ElevatorStatus::Wait, std::memory_order_relaxed);
-        mCallQueueCV.wait(lock, [this]() {
-          return !mCallQueue.empty() || !isRun.load(std::memory_order_acquire);
-        });
+    if (const auto callResult = elevatorsControl.findCall(mCurrentFloor); callResult) {
+      // If there is a call, move to the desired floor
+      moveTo(callResult->fromFloorNumber, elevatorsControl);
+      if (const auto toFloorNumber = elevatorsControl.doneCall(callResult->fromFloorNumber, {});
+          toFloorNumber) {
+        // If the call has not yet been serviced, then execute it
+        moveTo(*toFloorNumber, elevatorsControl, 1, callResult->direction);
+        mFilled = 0;
       }
-
-      if (!isRun.load(std::memory_order_relaxed)) {
-        break;
-      }
-
-      targetFloor = getTargetFloor();
-      currentFloor = mCurrentFloor.load(std::memory_order_relaxed);
-      if (currentFloor == targetFloor) {
-        /// if the elevator is already on the desired floor, then proceed to processing the next
-        /// target floor
-        reachTargetFloor();
-        continue;
-      }
-    }
-
-    const auto movingStartTime = std::chrono::steady_clock::now();
-    mLogger->addEvent(mElevatorNumber, currentFloor, mFilled.load(std::memory_order_relaxed),
-                      (currentFloor < targetFloor ? Event::Up : Event::Down));
-
-    /// move the elevator to the nearest target floor
-    bool isReachTargetFloor = false;
-    for (std::uint32_t iteration = 1; !isReachTargetFloor; ++iteration) {
-      /// waiting for the elevator to move between floors
-      std::this_thread::sleep_until(movingStartTime + iteration * mParameter.speed);
-
-      /// change the floor depending on the direction of movement
-      mCurrentFloor.fetch_add((currentFloor < targetFloor) ? 1 : -1, std::memory_order_release);
-      currentFloor = mCurrentFloor.load(std::memory_order_relaxed);
-
-      {
-        std::unique_lock lock(mCallQueueMtx);
-        targetFloor = getTargetFloor();
-        /// check if the nearest target floor has changed during the movement
-        if (currentFloor == targetFloor) {
-          /// if the elevator is already on the desired floor, then proceed to processing the next
-          /// target floor
-          reachTargetFloor();
-          isReachTargetFloor = true;
-        }
-      }
-    }
-
-    mLogger->addEvent(mElevatorNumber, currentFloor, mFilled.load(std::memory_order_relaxed),
-                      Event::Stop);
-  }
-}
-
-FloorNumber Elevator::getTargetFloor() const {
-  FloorNumber targetFloor = 1;
-  if (!mCallQueue.empty()) {
-    /// the nearest target floor is selected based on the direction of the elevator
-    targetFloor = (mDirection == ElevatorDirection::Up) ? mCallQueue.cbegin()->first
-                                                        : mCallQueue.crbegin()->first;
-  }
-  return targetFloor;
-}
-
-void Elevator::reachTargetFloor() {
-  if (!mCallQueue.empty()) {
-    CallQueue::iterator toErase{};
-    if (mDirection == ElevatorDirection::Up) {
-      toErase = mCallQueue.begin();
+      startedCallWaiting = std::chrono::steady_clock::now();
+    } else if (mCurrentFloor > 1 && (std::chrono::steady_clock::now() - startedCallWaiting >=
+                                     mParameter.autoComebackAfter)) {
+      // Comeback the elevator to the first floor after autoComebackAfter seconds of inactivity
+      moveTo(1, elevatorsControl);
     } else {
-      toErase = mCallQueue.end();
-      --toErase;
+      std::this_thread::sleep_for(100ms);
     }
-
-    /// updating information about the current fullness of the elevator
-    mFilled.fetch_add((toErase->second == Target::From) ? 1 : -1, std::memory_order_relaxed);
-
-    /// remove the target floor from the queue
-    mCallQueue.erase(toErase);
   }
+}
 
-  /// update the status of the movement of the elevator
-  mStatus.store((mDirection == ElevatorDirection::Up) ? ElevatorStatus::MoveUp
-                                                      : ElevatorStatus::MoveDown,
-                std::memory_order_relaxed);
+void Elevator::moveTo(FloorNumber floorNumber, IElevatorsControl &elevatorsControl,
+                      std::int8_t changeFilling, std::optional<CallDirection> pickUpDirection) {
+  if (floorNumber != mCurrentFloor) {
+    std::priority_queue<FloorNumber> targetFloorNumbers;
+    targetFloorNumbers.push(floorNumber);
+
+    while (!targetFloorNumbers.empty()) {
+      const auto targetFloorNumber = targetFloorNumbers.top();
+
+      mFilled += changeFilling;
+
+      const auto movingStartTime = std::chrono::steady_clock::now();
+      mLogger->addEvent(mElevatorNumber, mCurrentFloor, mFilled,
+                        (mCurrentFloor < targetFloorNumber ? Event::Up : Event::Down));
+
+      std::uint16_t iteration = 1;
+      while (true) {
+        /// Waiting for the elevator to move between floors
+        std::this_thread::sleep_until(movingStartTime + iteration * mParameter.speed);
+
+        /// Change the floor depending on the direction of movement
+        mCurrentFloor += (mCurrentFloor < targetFloorNumber) ? 1 : -1;
+
+        if (mCurrentFloor == targetFloorNumber) {
+          changeFilling = 0;
+          while (!targetFloorNumbers.empty() && targetFloorNumber == targetFloorNumbers.top()) {
+            targetFloorNumbers.pop();
+            changeFilling += -1;
+          }
+          break;
+        }
+
+        if (pickUpDirection && (mFilled <= mParameter.capacity)) {
+          const auto toFloorNumber = elevatorsControl.doneCall(mCurrentFloor, pickUpDirection);
+          if (toFloorNumber) {
+            targetFloorNumbers.push(*toFloorNumber);
+            changeFilling = 1;
+            break;
+          }
+        }
+
+        ++iteration;
+      }
+
+      mLogger->addEvent(mElevatorNumber, mCurrentFloor, mFilled, Event::Stop);
+    }
+  }
 }
 
 } // namespace elevator

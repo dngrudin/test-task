@@ -6,11 +6,10 @@
 
 namespace elevator {
 
-enum class SelectDirection { Up, Down };
+enum class CallDirection : std::int8_t { Invalid = 0, Up = 1, Down = 2 };
 
-using FloorNumber = std::int32_t;
 using ElevatorNumber = std::uint8_t;
-using ElevatorCapacity = std::uint8_t;
+using FloorNumber = std::uint16_t;
 using ElevatorFullness = std::uint8_t;
 
 } // namespace elevator

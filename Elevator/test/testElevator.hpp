@@ -6,27 +6,33 @@
 
 #include <gtest/gtest.h>
 
-#include "mocks/EventLoggerMock.hpp"
 #include "Elevator.hpp"
+#include "IElevatorsControl.hpp"
+#include "mocks/ElevatorsControlMock.hpp"
+#include "mocks/EventLoggerMock.hpp"
 
 using namespace std::chrono_literals;
 
-namespace utest
-{
-    class ElevatorFixture : public testing::Test
-    {
-    public:
-        void SetUp() override;
+namespace test {
 
-        void TearDown() override;
+class ElevatorFixture : public testing::Test {
+public:
+  void SetUp() override;
 
-    protected:
-        static constexpr std::chrono::seconds scElevatorSpeed = 2s;
+  void TearDown() override;
 
-        std::shared_ptr<mock::EventLoggerMock> mEventLoggerMock;
-        std::shared_ptr<elevator::Elevator> mElevator;
-    };
+protected:
+  static constexpr std::chrono::seconds ElevatorSpeed = 2s;
+  static constexpr std::chrono::seconds ElevatorAutoComebackAfter = 5s;
 
-}
+  inline static const auto EmptyCallResult = std::optional<elevator::FindCallResult>{};
+  inline static const auto EmptyFloorNumber = std::optional<elevator::FloorNumber>{};
+
+  mock::ElevatorsControlMock mElevatorsControl;
+  std::shared_ptr<mock::EventLoggerMock> mEventLoggerMock;
+  std::shared_ptr<elevator::Elevator> mElevator;
+};
+
+} // namespace test
 
 #endif // TEST_ELEVATOR_H

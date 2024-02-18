@@ -3,7 +3,8 @@
 #define EVENT_LOG_H
 
 #include <list>
-#include <mutex>
+#include <memory>
+#include <shared_mutex>
 
 #include "IEventLogger.hpp"
 
@@ -12,14 +13,14 @@ namespace elevator {
 /**
  * @brief Implementation IEventLogger interface.
  */
-class EventLogger : public IEventLogger {
-public:
-  EventLogger() = default;
-
+class EventLogger final : public IEventLogger {
   EventLogger(const EventLogger &) = delete;
   EventLogger &operator=(const EventLogger &) = delete;
   EventLogger(EventLogger &&) = delete;
   EventLogger &operator=(EventLogger &&) = delete;
+
+public:
+  EventLogger() = default;
 
   /**
    * @brief Responsible for collecting events about changing the status of elevators.
@@ -33,11 +34,11 @@ public:
                 Event event) override;
 
   /**
-   * @brief Get the event list
+   * @brief Print all events.
    *
-   * @param events - list of events that have occurred
+   * @param baseTimepoint - time relative to which the time of events will be displayed
    */
-  void getEvents(std::vector<EventData> &events) const override;
+  void printEvents(const EventData::Timepoint baseTimepoint) const override;
 
   /**
    * @brief Clear all events
@@ -45,8 +46,8 @@ public:
   void clearEvents() override;
 
 private:
-  std::list<EventData> mEvents; /** < Event list */
-  mutable std::mutex mEventMtx; /** < Mutex to synchronize the list of events */
+  std::list<EventData> mEvents;        /** < Event list */
+  mutable std::shared_mutex mEventMtx; /** < Mutex to synchronize the list of events */
 };
 
 } // namespace elevator

@@ -3,9 +3,8 @@
 #define ELEVATOR_H
 
 #include <atomic>
-#include <condition_variable>
-#include <map>
 #include <memory>
+#include <optional>
 #include <thread>
 
 #include "IElevator.hpp"
@@ -18,104 +17,58 @@ class IEventLogger;
 /**
  * @brief Implementation IElevator interface.
  */
-class Elevator : public IElevator {
-public:
-  Elevator(ElevatorNumber number, ElevatorParameter parameter,
-           std::shared_ptr<IEventLogger> logger);
-  ~Elevator();
-
+class Elevator final : public IElevator {
   Elevator(const Elevator &) = delete;
   Elevator &operator=(const Elevator &) = delete;
   Elevator(Elevator &&) = delete;
   Elevator &operator=(Elevator &&) = delete;
 
-  /**
-   * @brief Get the current elevator position (floor)
-   *
-   * @return floor number where the elevator is currently located
-   */
-  FloorNumber getCurrentFloor() const;
+public:
+  Elevator(ElevatorNumber number, ElevatorParameter parameter,
+           std::shared_ptr<IEventLogger> logger);
+  ~Elevator();
 
   /**
-   * @brief Get the current elevator moving status
+   * @brief Enables elevator.
    *
-   * @return elevator moving status
+   * @param elevatorsControl - elevators control
    */
-  ElevatorStatus getCurrentStatus() const;
+  void enable(IElevatorsControl &elevatorsControl) override;
 
   /**
-   * @brief Determines if the elevator is full or not
-   *
-   * @return true if the elevator is full, otherwise false
+   * @brief Disables elevator.
    */
-  bool isFull() const;
-
-  /**
-   * @brief Performs an elevator call to the floor
-   *
-   * @param from - initial floor of the elevator call
-   * @param to - target floor
-   * @return true if the elevator can complete the current call, otherwise false
-   */
-  bool call(FloorNumber from, FloorNumber to);
+  void disable() override;
 
 private:
   /**
-   * @brief Direction of movement of the elevator
-   */
-  enum class ElevatorDirection {
-    Up,
-    Down,
-  };
-
-  /**
-   * @brief Target type
-   */
-  enum class Target {
-    /** < Initial floor of the elevator call */
-    From,
-    /** < End floor */
-    To,
-  };
-
-  /**
-   * @brief Elevator call and stop queue (with the ability to choose the direction of calls)
-   */
-  using CallQueue = std::map<FloorNumber, Target>;
-
-  /**
-   * @brief Elevator call handler for a separate thread
-   */
-  void callsHandler();
-
-  /**
-   * @brief Get the target floor number
+   * @brief Elevator movement handler.
    *
-   * @return target floor number
+   * @param elevatorsControl - elevators control
    */
-  FloorNumber getTargetFloor() const;
+  void moveHandler(IElevatorsControl &elevatorsControl);
 
   /**
-   * @brief Performs a call dequeue when the target is reached
+   * @brief Moves the elevator to the specified floor.
+   *
+   * @param floorNumber - target floor
+   * @param elevatorsControl - elevators control
+   * @param changeFilling - indicates how much the elevator occupancy needs to be increased
+   * @param pickUpDirection - if specified, it will check whether it is possible to pick up
+   *                          passengers in the specified direction
    */
-  void reachTargetFloor();
+  void moveTo(FloorNumber floorNumber, IElevatorsControl &elevatorsControl,
+              std::int8_t changeFilling = 0, std::optional<CallDirection> pickUpDirection = {});
 
-  ElevatorDirection mDirection; /** < Direction of movement of the elevator */
-
-  const ElevatorNumber mElevatorNumber;        /** < Elevator number */
-  const ElevatorParameter mParameter;          /** < Elevator parameter */
   const std::shared_ptr<IEventLogger> mLogger; /** < Pointer to logger */
 
-  CallQueue mCallQueue; /** < Elevator call and stop queue */
+  const ElevatorNumber mElevatorNumber; /** < Elevator number */
+  const ElevatorParameter mParameter;   /** < Elevator parameter */
 
-  std::atomic<FloorNumber>
-      mCurrentFloor;                   /** < Floor number where the elevator is currently located */
-  std::atomic<ElevatorStatus> mStatus; /** < Current elevator moving status */
-  std::atomic<ElevatorCapacity> mFilled; /** < Elevator fullness */
+  FloorNumber mCurrentFloor; /** < Floor number where the elevator is currently located */
+  ElevatorCapacity mFilled;  /** < Elevator fullness */
 
-  std::condition_variable mCallQueueCV;
-  std::mutex mCallQueueMtx;
-  std::thread mCallsHandlerThread;
+  std::thread mMoveHandlerThread;
   std::atomic<bool> isRun; /** < Sign that the elevator is processing calls */
 };
 

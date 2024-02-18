@@ -4,13 +4,19 @@ set(LIBRARY_NAME elevator)
 set(LIBRARY_ALIAS Elevator)
 
 set(SOURCE
+    "private/CallerToFloor.cpp"
     "private/Elevator.cpp"
     "private/ElevatorsControl.cpp"
     "private/EventLogger.cpp"
+    "CallerToFloor.hpp"
     "Elevator.hpp"
     "ElevatorsControl.hpp"
-    "Types.hpp"
     "EventLogger.hpp"
+    "ICallerToFloor.hpp"
+    "IElevator.hpp"
+    "IElevatorsControl.hpp"
+    "IEventLogger.hpp"
+    "Types.hpp"
 )
 
 add_library(${LIBRARY_NAME} STATIC ${SOURCE})

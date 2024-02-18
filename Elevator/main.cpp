@@ -1,31 +1,34 @@
 ﻿
 #include <chrono>
 #include <iostream>
+#include <memory>
 #include <vector>
 
+#include "CallerToFloor.hpp"
 #include "Elevator.hpp"
 #include "ElevatorsControl.hpp"
 #include "EventLogger.hpp"
+#include "Types.hpp"
 
 struct UserCall {
   std::chrono::seconds timeFromStart;
   elevator::FloorNumber from;
   elevator::FloorNumber to;
-  elevator::SelectDirection direction;
+  elevator::CallDirection direction;
 };
-
-void printEvents(const std::vector<elevator::EventData> &events,
-                 const std::chrono::steady_clock::time_point &baseTimepoint);
 
 int main() {
   using namespace std::chrono_literals;
 
-  const std::vector<elevator::ElevatorParameter> elevatorsParameter{{5, 2s}, {5, 2s}, {10, 3s}};
+  static constexpr elevator::FloorNumber CountFloors = 10;
+
+  const std::vector<elevator::ElevatorParameter> elevatorsParameter{
+      {5, 2s, 5s}, {5, 2s, 5s}, {10, 3s, 5s}};
 
   const std::vector<UserCall> userCalls{
-      {0s, 1, 5, elevator::SelectDirection::Up},
-      {10s, 3, 10, elevator::SelectDirection::Up},
-      {15s, 7, 1, elevator::SelectDirection::Down},
+      {0s, 1, 5, elevator::CallDirection::Up},
+      {10s, 3, 10, elevator::CallDirection::Up},
+      {15s, 7, 1, elevator::CallDirection::Down},
   };
 
   std::chrono::steady_clock::time_point start;
@@ -35,12 +38,20 @@ int main() {
     elevator::ElevatorsControl evelvatorsControl{};
 
     std::vector<std::shared_ptr<elevator::IElevator>> elevators{};
-    for (std::size_t index = 0; index < elevatorsParameter.size(); ++index) {
+    for (std::size_t i = 0; i < elevatorsParameter.size(); ++i) {
       auto elevator = std::make_shared<elevator::Elevator>(
-          static_cast<elevator::ElevatorNumber>(index + 1), elevatorsParameter[index], eventLogger);
+          static_cast<elevator::ElevatorNumber>(i + 1), elevatorsParameter[i], eventLogger);
       elevators.emplace_back(std::move(elevator));
     }
-    evelvatorsControl.setElevators(elevators);
+
+    std::vector<std::unique_ptr<elevator::ICallerToFloor>> callerToFloors{};
+    for (std::size_t i = 0; i < CountFloors; ++i) {
+      auto callerToFloor =
+          std::make_unique<elevator::CallerToFloor>(static_cast<elevator::FloorNumber>(i + 1));
+      callerToFloors.emplace_back(std::move(callerToFloor));
+    }
+
+    evelvatorsControl.enable(std::move(elevators), std::move(callerToFloors));
 
     std::cout << "Start\n";
 
@@ -55,34 +66,7 @@ int main() {
     std::cout << "Stop\n";
   }
 
-  std::vector<elevator::EventData> events{};
-  eventLogger->getEvents(events);
-
-  std::cout << "Print log\n";
-  printEvents(events, start);
+  eventLogger->printEvents(start);
 
   return 0;
-}
-
-inline const char *eventToString(elevator::Event event) {
-  switch (event) {
-  case elevator::Event::Stop:
-    return "Stop";
-  case elevator::Event::Up:
-    return "Up";
-  case elevator::Event::Down:
-    return "Down";
-  }
-
-  return "";
-}
-
-void printEvents(const std::vector<elevator::EventData> &events,
-                 const std::chrono::steady_clock::time_point &baseTimepoint) {
-  for (const auto &event : events) {
-    std::cout << std::chrono::duration<double>(event.time - baseTimepoint).count() << ' '
-              << static_cast<std::int32_t>(event.elevatorNumber) << ' ' << event.floorNumber << ' '
-              << eventToString(event.event) << ' ' << static_cast<std::int32_t>(event.fullness)
-              << '\n';
-  }
 }
